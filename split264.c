@@ -5,20 +5,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <strings.h>
 #include <string.h>
 
 
-#ifndef bzero
-#define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
-#endif // bzero
-#ifndef bcopy
-#define bcopy(b1,b2,len) (memmove((b2), (b1), (len)), (void) 0)
-#endif // bcopy
-
-/*WAV*/
-
-
+/* WAV */
 typedef struct wav_header
 {
     // RIFF Header
@@ -42,97 +32,195 @@ typedef struct wav_header
     // uint8_t bytes[]; // Remainder of wave file is bytes
 } wav_header;
 
-
-
-
-
-
-
-
-int main(int ac, char **av)
+/**
+    Main
+ **/
+int main(int ac, char **argValue)
 {
-    FILE *in,*out,*outa;
+    FILE *rawFile,*videoFile,*audioFile;
+    FILE *videoTSFile,*audioTSFile;
+
+    int firstVideoTS = -1;
+    int firstAudioTS = -1;
+
+
     wav_header ahead;
 
-    char *buffer,*p,ccode[5],*strbuf,*strp;
+    char *pFullBuffer,*p, ccode[5], *pFilename, *pString;
     int count,bufsiz,abytes;
     int len = 0;
 
     if(ac != 2)
-        exit(printf("use %s <file> \n",av[0]));
+    {
+        exit(printf("use %s <file> \n",argValue[0]));
+    }
 
-    if(!(in = fopen(av[1],"rb")))
-        exit(printf("cannot open %s for reading.\n",av[1]));
+    if(!(rawFile = fopen(argValue[1],"rb")))
+    {
+        exit(printf("cannot open %s for reading.\n",argValue[1]));
+    }
 
-    /* try to allocate a buffer size of infile */
-    fseek(in,0,SEEK_END);
-    bufsiz = ftell(in);
-    rewind(in);
-    if(!(buffer = malloc(bufsiz)))
+    /* try to allocate a pFullBuffer size of infile */
+    fseek(rawFile,0,SEEK_END);
+    bufsiz = ftell(rawFile);
+    rewind(rawFile);
+    if(!(pFullBuffer = ( char * ) malloc(bufsiz)))
+    {
         exit(printf("unable to allocate %d bytes\n",bufsiz));
-    p = buffer;
+    }
+    p = pFullBuffer;
+
     /* open output */
 
 
-    if(!(strbuf = malloc(strlen(av[1])+5)))
+    if(!(pFilename = (char*) malloc(strlen(argValue[1])+5)))
+    {
         exit(printf("no mem for strings\n"));
+    }
 
+    //    Input Raw file
+    pString = strstr(argValue[1],".264");
+    if(pString != NULL)
+    {
+        *pString = '\0';
+    }
+    pString = argValue[1];
 
-    strp = strstr(av[1],".264");
-    if(strp != NULL)
-        *strp = '\0';
-    strp = av[1];
+    //    Video File
+    sprintf(pFilename,"%s.h264",pString);
+    if(!(videoFile = fopen(pFilename,"wb")))
+    {
+        exit(printf("cannot open %s for writing.\n",argValue[2]));
+    }
 
+    //    Video Timestamp
+    sprintf(pFilename,"%s.video.ts.txt",pString);
+    if(!(videoTSFile = fopen(pFilename,"w")))
+    {
+        exit(printf("cannot open %s for writing.\n",argValue[2]));
+    }
+    fprintf ( videoTSFile, "# timestamp format v2\n" );
 
-    sprintf(strbuf,"%s.mp4",strp);
+    //    Wav File
+    sprintf(pFilename,"%s.wav",pString);
+    if(!(audioFile = fopen(pFilename,"wb")))
+    {
+        exit(printf("cannot open %s for writing.\n",pFilename));
+    }
 
-    if(!(out = fopen(strbuf,"wb")))
-        exit(printf("cannot open %s for writing.\n",av[2]));
+    //    Wav Timestamp File
+    sprintf(pFilename,"%s.audio.ts.txt",pString);
+    if(!(audioTSFile = fopen(pFilename,"w")))
+    {
+        exit(printf("cannot open %s for writing.\n",pFilename));
+    }
+    fprintf ( audioTSFile, "# timestamp format v2\n" );
 
-    sprintf(strbuf,"%s.wav",strp);
+    fwrite(&ahead,sizeof(wav_header),1,audioFile);
 
-    if(!(outa = fopen(strbuf,"wb")))
-        exit(printf("cannot open %s for writing.\n",strbuf));
-
-    fwrite(&ahead,sizeof(wav_header),1,outa);
     /* get data */
-    count = fread(buffer,1,bufsiz,in);
+    count = fread(pFullBuffer,1,bufsiz,rawFile);
     abytes = 0;
     if(count != bufsiz)
     {
         printf("could only read %d of %d bytes\n",count,bufsiz);
         exit(0);
     }
-    /* Throw first 0x10 bytes of garbage/fileheader plus first videoheader */
-    p += 0x10;
 
-    while(p-buffer < bufsiz)
+    /* Throw first 0x10 bytes of garbage/fileheader plus first videoheader */
+    // HXVS
+    memset(ccode,0,sizeof(ccode));
+    memcpy(ccode, p, 4);
+    if( ! strncmp((char *)ccode,"HXVS",4) == 0 )
     {
-        bzero(ccode,5);
-        bcopy(p,ccode,4);
+        exit(printf("No HXVS.\n"));
+    }
+    p    += 4;
+
+    //    ??
+    p    += 4;
+
+    // Duration
+    int duration;
+    memcpy(&duration, p, sizeof(int));
+    printf("Duration %d\n", duration);
+
+    p    += 4;
+
+    //    ??
+    p     += 4;
+
+    while(p - pFullBuffer < bufsiz)
+    {
+        //    Code
+        memset(ccode,0,sizeof(ccode));
+        memcpy(ccode, p, 4);
         p += 4;
-        bcopy(p,&len,4);
-        if(!(strncmp((char *)ccode,"HXAF",4)))
+
+        //    The Length
+        memcpy(&len, p, sizeof(int));
+        p += 4;
+
+        //
+        if( strncmp((char *)ccode,"HXAF",4) == 0 )
         {
-            p += 0xc;
+            //     Timestamp
+            int ts;
+            memcpy(&ts,p,sizeof(int));
+            if ( firstAudioTS == -1 )
+            {
+                firstAudioTS = ts;
+            }
+            fprintf ( audioTSFile, "%d\n", ts - firstAudioTS );
+            p += 4;
+
+            //    ??
+            p += 4;
+
+            //    Audio
             p += 4; // {0x0001, 0x5000} whatever that means, it must go, it's no audio
             len -= 4;
-            printf("code: HXAF audio  %d bytes\n",len);
-            fwrite(p,1,len,outa);
+            // printf("code: HXAF audio  %d bytes\n",len);
+            fwrite(p,1,len,audioFile);
             p += len;
             abytes += len;
             continue;
         }
+        if( strncmp((char *)ccode,"HXVF",4) == 0 )
+        {
+            //    Timestamp
+            int ts;
+            memcpy(&ts,p,sizeof(int));
+            if ( firstVideoTS == -1 )
+            {
+                firstVideoTS = ts;
+            }
+
+            int NalUnit = p [ 12 ] & 0x1f;
+            //    Do not set TimeStampp for SPS...
+            if ( NalUnit != 0x6 && NalUnit != 0x7 && NalUnit != 0x8 )
+            {
+                fprintf ( videoTSFile, "%d\n", ts - firstVideoTS );
+            }
+            p += 4;
+
+            //    ??
+            p += 4;
+
+            //
+            fwrite(p,1,len,videoFile);
+            p += len;
+            continue;
+        }
         else if(!(strncmp((char *)ccode,"HXFI",4)))
         {
-            printf("found code HXFI, exit\n");
+            printf("HXFI End if File\n");
             break; /* some sort of table follows */
         }
-        /* this will break if there's some other ccode ! */
-        printf("code: %s video %d bytes\n",ccode,len);
-        p += 0xc;
-        fwrite(p,1,len,out);
-        p += len;
+        else
+        {
+            printf("Unknown Code\n");
+        }
     }
 
     /* wav header */
@@ -151,13 +239,15 @@ int main(int ac, char **av)
     ahead.bit_depth = 16;
     ahead.data_bytes = abytes;
     ahead.wav_size = abytes + sizeof(wav_header) - 8;
-    fseek(outa,0,SEEK_SET);
-    fwrite(&ahead,sizeof(wav_header),1,outa);
+    fseek(audioFile,0,SEEK_SET);
+    fwrite(&ahead,sizeof(wav_header),1,audioFile);
 
-    free(buffer);
-    fclose(in);
-    fclose(out);
-    fclose(outa);
+    free(pFullBuffer);
+    fclose(rawFile);
+    fclose(videoFile);
+    fclose(audioFile);
+    fclose(videoTSFile);
+    fclose(audioTSFile);
     exit(0);
 
-}
+} 
