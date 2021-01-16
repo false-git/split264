@@ -19,9 +19,10 @@ do
 	continue
     fi
 
+    echo $orig
     split264 $orig
     mv $mp4 $tmpf
-    ffmpeg -i $tmpf -i $wav $mp4
+    ffmpeg -v 0 -i $tmpf -i $wav $mp4
     touch -r $orig $mp4
     rm -f $tmpf $wav
 done
