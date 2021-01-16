@@ -1,23 +1,27 @@
 #!/bin/sh
 
-for i in $1/*.264
-do
-
-orig=$i
-fname=${orig%.*}
-mp4=${fname}.mp4
-wav=${fname}.wav
-tmpf=${fname}.mp4.mp4
-
-if [ -e $mp4 ]
+if [ "x$1" = "x" ]
 then
-continue
+    echo Usage: $0 directory_of_264
+    exit 1
 fi
 
-split264 $orig
-mv $mp4 $tmpf
-ffmpeg -i $tmpf -i $wav $mp4
-touch -r $orig $mp4
-rm -f $tmpf $wav
+for i in $1/*.264
+do
+    orig=$i
+    fname=${orig%.*}
+    mp4=${fname}.mp4
+    wav=${fname}.wav
+    tmpf=${fname}.mp4.mp4
 
+    if [ -e $mp4 ]
+    then
+	continue
+    fi
+
+    split264 $orig
+    mv $mp4 $tmpf
+    ffmpeg -i $tmpf -i $wav $mp4
+    touch -r $orig $mp4
+    rm -f $tmpf $wav
 done
