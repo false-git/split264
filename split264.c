@@ -131,7 +131,7 @@ int main(int ac, char **argValue)
     // HXVS
     memset(ccode,0,sizeof(ccode));
     memcpy(ccode, p, 4);
-    if( ! strncmp((char *)ccode,"HXVS",4) == 0 )
+    if( strncmp((char *)ccode,"HXVS",4) != 0 )
     {
         exit(printf("No HXVS.\n"));
     }
